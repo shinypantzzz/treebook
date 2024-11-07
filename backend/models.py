@@ -105,7 +105,7 @@ class Book(Base):
             .join_from(__class__, Like, __class__.id == Like.book_id, isouter=True)
             .join(User, __class__.author_id == User.id)
             .join(Page, and_(__class__.id == Page.book_id, Page.first == True), isouter=True)
-            .join(Genre, __class__.genre_id == Genre.id)
+            .join(Genre, __class__.genre_id == Genre.id, isouter=True)
             .group_by(__class__.id)
             .where(True, *_where)
             .order_by(_order_by)
