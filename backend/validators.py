@@ -31,5 +31,5 @@ def validate_page_text(text: str):
 def safe_convert_to_uuid(uuid: str):
     try:
         return UUID(hex=uuid)
-    except ValueError:
+    except ValueError and TypeError:
         return UUID(int=0)
