@@ -1,5 +1,6 @@
 from aiohttp import web
 import asyncio
+import aiohttp_cors
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
@@ -28,6 +29,18 @@ with Session(engine) as session:
         web.post('/page/like', handlers.like_page),
         web.delete('/page/like', handlers.unlike_page),
     ])
+
+    cors = aiohttp_cors.setup(app, defaults={
+        "*": aiohttp_cors.ResourceOptions(
+            allow_credentials=True,
+            expose_headers="*",
+            allow_headers="*",
+            allow_methods="*",
+        )
+    })
+
+    for route in list(app.router.routes()):
+        cors.add(route)
 
     loop.create_task(tokens_cleanup(session))
 
