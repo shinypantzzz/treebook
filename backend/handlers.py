@@ -17,15 +17,18 @@ async def register_user(request: Request) -> Response:
     username = params.get('username')
     password = params.get('password')
 
-    if not validate_username(username) or not validate_password(password):
-        print(username, password)
-        return Response(status=400, reason="Invalid credentials")
+    if not validate_username(username):
+        return Response(status=400, reason="INVALID_USERNAME")
+    
+    if not validate_password(password):
+        return Response(status=400, reason="INVALID_PASSWORD")
     
     session: Session = request.app.get('session')
     
     user = session.query(User).filter(User.username == username).first()
+
     if user:
-        return Response(status=409, reason="Username already exists")
+        return Response(status=409, reason="USERNAME_ALREADY_EXISTS")
     
     new_user = User(
         username=username,
@@ -37,7 +40,7 @@ async def register_user(request: Request) -> Response:
     session.add(new_user)
     session.commit()
 
-    return Response(status=201, headers={"Authorization": f"Bearer {token}"}, reason="User registered successfully")
+    return Response(status=201, headers={"Authorization": f"Bearer {token}"}, reason="SUCCESS")
 
 async def login_user(request: Request) -> Response:
     params = await request.post()
@@ -49,10 +52,10 @@ async def login_user(request: Request) -> Response:
 
     user = session.query(User).filter(User.username == username).first()
     if not user:
-        return Response(status=404, reason="User not found")
+        return Response(status=404, reason="USER_NOT_FOUND")
     
     if not check_password(password, user.password):
-        return Response(status=401, reason="Incorrect password")
+        return Response(status=401, reason="WRONG_PASSWORD")
     
     session.execute(user.tokens.update().values(active=False))
     
@@ -60,7 +63,7 @@ async def login_user(request: Request) -> Response:
     user.tokens.add(token)
     session.commit()
 
-    return Response(status=200, headers={"Authorization": f"Bearer {token}"}, reason="Logged in successfully")
+    return Response(status=200, headers={"Authorization": f"Bearer {token}"}, reason="SUCCESS")
 
 @auth_required
 async def create_book(request: Request) -> Response:
@@ -70,12 +73,12 @@ async def create_book(request: Request) -> Response:
     title = params.get('title')
     
     if not validate_title(title):
-        return Response(status=400, reason="Invalid title")
+        return Response(status=400, reason="INVALID_TITLE")
     
     first_page_text = params.get('text')
 
     if not validate_page_text(first_page_text):
-        return Response(status=400, reason="Invalid first page text")
+        return Response(status=400, reason="INVALID_FIRST_PAGE_TEXT")
     
     genre_id = params.get('genre_id', None)
     
@@ -100,7 +103,7 @@ async def create_book(request: Request) -> Response:
     session.add(first_page)
     session.commit()
 
-    return Response(status=201, reason="Book created successfully", content_type='application/json', body=dumps({'book_id': str(book.id), 'first_page_id': str(first_page.id)}))
+    return Response(status=201, reason="SUCCESS", content_type='application/json', body=dumps({'book_id': str(book.id), 'first_page_id': str(first_page.id)}))
 
 async def get_book(request: Request) -> Response:
     book_id = request.query.get('book_id', UUID(int=0).hex)
@@ -110,9 +113,9 @@ async def get_book(request: Request) -> Response:
     book = session.execute(Book.select(where={'id': book_id}, limit=1)).first()
 
     if not book:
-        return Response(status=404, reason="Book not found")
+        return Response(status=404, reason="BOOK_NOT_FOUND")
     
-    return Response(status=200, content_type='application/json', body=dumps(book._asdict(), default=str))
+    return Response(status=200, reason="SUCCESS", content_type='application/json', body=dumps(book._asdict(), default=str))
 
 async def get_list(request: Request, Model: Type[Base]) -> Response:
     
@@ -140,7 +143,7 @@ async def get_list(request: Request, Model: Type[Base]) -> Response:
 
     items = session.execute(Model.select(where=where, order_by=order_by, desc_=desc_, offset=offset, limit=limit)).all()
     
-    return Response(status=200, content_type='application/json', body=dumps([row._asdict() for row in items], default=str))
+    return Response(status=200, reason='SUCCESS', content_type='application/json', body=dumps([row._asdict() for row in items], default=str))
 
 async def get_books(request: Request) -> Response:
     return await get_list(request, Book)
@@ -154,11 +157,11 @@ async def like_book(request: Request) -> Response:
     session: Session = request.app.get('session')
 
     if session.query(Like).filter(Like.book_id == UUID(hex=book_id), Like.user_id == user.id).first():
-        return Response(status=409, reason="You have already liked this book")
+        return Response(status=409, reason="BOOK_ALREADY_LIKED")
 
     book = session.query(Book).filter(Book.id == UUID(hex=book_id)).first()
     if not book:
-        return Response(status=404, reason="Book not found")
+        return Response(status=404, reason="BOOK_NOT_FOUND")
 
     like = Like(
         book=book,
@@ -168,7 +171,19 @@ async def like_book(request: Request) -> Response:
     session.add(like)
     session.commit()
 
-    return Response(status=200, reason="Book liked successfully")
+    return Response(status=200, reason="SUCCESS")
+
+@auth_required
+async def unlike_book(request: Request):
+    params = await request.post()
+    book_id = params.get('book_id', UUID(int=0).hex)
+    user: User = request.get('user')
+
+    session: Session = request.app.get('session')
+
+    session.execute(Like.delete(where={'book_id': book_id, 'user_id': user.id.hex}))
+
+    return Response(status=200, reason='SUCCESS')
 
 @auth_required
 async def create_page(request: Request):
@@ -180,7 +195,7 @@ async def create_page(request: Request):
     text = params.get('text')
 
     if not validate_page_text(text):
-        return Response(status=400, reason="Invalid page text")
+        return Response(status=400, reason="INVALID_PAGE_TEXT")
     
     prev_page_id = params.get('prev_page_id', UUID(int=0).hex)
 
@@ -188,10 +203,10 @@ async def create_page(request: Request):
     prev_page = session.query(Page).filter(Page.id == UUID(hex=prev_page_id)).first()
 
     if not prev_page:
-        return Response(status=404, reason="Previous page not found")
+        return Response(status=404, reason="PREV_PAGE_NOT_FOUND")
     
     if prev_page.last:
-        return Response(status=400, reason="Provided previous page is the last page")
+        return Response(status=409, reason="LAST_PAGE_REFERENCE")
     
     new_page = Page(
         text=text,
@@ -204,7 +219,7 @@ async def create_page(request: Request):
     session.add(new_page)
     session.commit()
 
-    return Response(status=201, reason="Page created successfully", content_type='application/json', body=dumps({'page_id': str(new_page.id)}))
+    return Response(status=201, reason="SUCCESS", content_type='application/json', body=dumps({'page_id': str(new_page.id)}))
 
 
 async def get_page(request: Request):
@@ -214,24 +229,12 @@ async def get_page(request: Request):
     page = session.execute(Page.select(where={'id': page_id}, limit=1)).first()
 
     if not page:
-        return Response(status=404, reason="Page not found")
+        return Response(status=404, reason="PAGE_NOT_FOUND")
     
-    return Response(status=200, content_type='application/json', body=dumps(page._asdict(), default=str))
+    return Response(status=200, reason="SUCCESS", content_type='application/json', body=dumps(page._asdict(), default=str))
 
 async def get_pages(request: Request):
     return await get_list(request, Page)
-
-@auth_required
-async def unlike_book(request: Request):
-    params = await request.post()
-    book_id = params.get('book_id', UUID(int=0).hex)
-    user: User = request.get('user')
-
-    session: Session = request.app.get('session')
-
-    session.execute(Like.delete(where={'book_id': book_id, 'user_id': user.id.hex}))
-
-    return Response(status=200, reason='Unliked successfully')
 
 @auth_required
 async def like_page(request: Request) -> Response:
@@ -242,11 +245,11 @@ async def like_page(request: Request) -> Response:
     session: Session = request.app.get('session')
 
     if session.query(Like).filter(Like.page_id == UUID(hex=page_id), Like.user_id == user.id).first():
-        return Response(status=409, reason="You have already liked this page")
+        return Response(status=409, reason="PAGE_ALREADY_LIKED")
 
     page = session.query(Page).filter(Page.id == UUID(hex=page_id)).first()
     if not page:
-        return Response(status=404, reason="Page not found")
+        return Response(status=404, reason="PAGE_NOT_FOUND")
 
     like = Like(
         page=page,
@@ -256,7 +259,7 @@ async def like_page(request: Request) -> Response:
     session.add(like)
     session.commit()
 
-    return Response(status=200, reason="Page liked successfully")
+    return Response(status=200, reason="SUCCESS")
 
 
 @auth_required
@@ -269,6 +272,6 @@ async def unlike_page(request: Request):
 
     session.execute(Like.delete(where={'page_id': page_id, 'user_id': user.id.hex}))
 
-    return Response(status=200, reason='Unliked successfully')
+    return Response(status=200, reason='SUCCESS')
 
 
