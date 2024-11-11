@@ -97,9 +97,11 @@ class Book(Base):
         return (
             select(
                 *__class__.__table__.columns, 
-                func.count(Like.user_id).label("likes_count"), 
+                func.count(Like.user_id).label("likes_count"),
+                User.id.label("author_id"),  
                 User.username.label("author"), 
                 Page.id.label("first_page_id"),
+                Genre.id.label("genre_id"),
                 Genre.name.label("genre")
             )
             .join_from(__class__, Like, __class__.id == Like.book_id, isouter=True)
@@ -163,13 +165,18 @@ class Page(Base):
         if _limit > 200:
             _limit = 20
 
-        parent_pages = alias(Page, name='parent_pages')
- 
         return (
-            select(*__class__.__table__.columns, func.count(Like.user_id).label("likes_count"), User.username.label("author"), Page.id.label("prev_page_id"))
+            select(
+                *__class__.__table__.columns, 
+                func.count(Like.user_id).label("likes_count"), 
+                User.id.label("author_id"),  
+                User.username.label("author"),
+                Book.id.label("book_id"),
+                Book.title.label("book_title")
+            )
             .join_from(__class__, Like, __class__.id == Like.page_id, isouter=True)
             .join(User, __class__.author_id == User.id)
-            .join(parent_pages, __class__.previous_page_id == parent_pages.columns.get('id'), isouter=True)
+            .join(Book, __class__.book_id == Book.id)
             .group_by(__class__.id)
             .where(True, *_where)
             .order_by(_order_by)
