@@ -6,7 +6,7 @@ def periodic(interval: int):
         async def wrapper(*args, **kwargs):
             func(*args, **kwargs)
             await sleep(interval)
-            await wrapper()
+            await wrapper(*args, **kwargs)
 
         return wrapper
 
