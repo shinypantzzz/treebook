@@ -1,3 +1,5 @@
+from config import DB_PATH, STATIC_PATH
+
 from aiohttp import web
 import asyncio
 import aiohttp_cors
@@ -8,7 +10,7 @@ from sqlalchemy.orm import Session
 import handlers
 from cleanups import tokens_cleanup
 
-engine = create_engine("sqlite:///treebook.db", echo=True)
+engine = create_engine(f"sqlite:///{DB_PATH}", echo=True)
 loop = asyncio.new_event_loop()
 
 with Session(engine) as session:
@@ -28,6 +30,7 @@ with Session(engine) as session:
         web.get('/page', handlers.get_page),
         web.post('/page/like', handlers.like_page),
         web.delete('/page/like', handlers.unlike_page),
+        web.static('/static', STATIC_PATH, name='static')
     ])
 
     cors = aiohttp_cors.setup(app, defaults={

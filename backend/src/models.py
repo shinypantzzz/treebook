@@ -2,7 +2,6 @@ from sqlalchemy import ForeignKey, func, select, Select, desc, and_, Delete, del
 from sqlalchemy.orm import DeclarativeBase, Mapped, WriteOnlyMapped, mapped_column, relationship
 from sqlalchemy.types import String
 from sqlalchemy.sql.elements import ColumnElement
-from sqlalchemy.sql import alias
 
 from uuid import uuid4, UUID
 from datetime import datetime
@@ -13,13 +12,49 @@ class Base(DeclarativeBase):
     __order_by_options__: set[str] = set()
     __filter_options__: dict[str, Callable[[str], ColumnElement[bool]]] = {}
     
-    @staticmethod
-    def select(order_by: str | None = None, where: dict[str, str] = {}, desc_: bool = False, offset: int = 0, limit: int = 20) -> Select:
-        pass
+    @classmethod
+    def select(cls, order_by: str | None = None, where: dict[str, str] = {}, desc_: bool = False, offset: int = 0, limit: int = 20) -> Select:
+        _where = []
+        for op, ex in cls.__filter_options__.items():
+            if op in where:
+                _where.append(ex(where[op]))
 
-    @staticmethod
-    def delete(where: dict[str, str] = {}) -> Delete:
-        pass
+        _order_by = order_by
+
+        if _order_by not in cls.__order_by_options__:
+            _order_by = None
+        
+        if desc_:
+            _order_by = desc(_order_by)
+
+        _offset = offset
+
+        _limit = limit
+        if _limit > 200:
+            _limit = 20
+
+        return (
+            cls.select_base()
+            .where(True, *_where)
+            .order_by(_order_by)
+            .offset(_offset)
+            .limit(_limit)
+        )
+
+    @classmethod
+    def select_base(cls) -> Select:
+        return select(*cls.__table__.columns)
+
+    @classmethod
+    def delete(cls, where: dict[str, str] = {}) -> Delete:
+        _where = []
+        for op, ex in cls.__filter_options__.items():
+            if op in where:
+                _where.append(ex(where[op]))
+
+        return delete(cls).where(True, *_where)
+
+
     
 
 class User(Base):
@@ -72,47 +107,27 @@ class Book(Base):
     created_at: Mapped[datetime] = mapped_column(insert_default=datetime.now)
     pages: WriteOnlyMapped[list["Page"]] = relationship(back_populates="book")
     likes: WriteOnlyMapped[list["Like"]] = relationship(back_populates='book')
+    cover_image_id: Mapped[Optional[UUID]] = mapped_column(ForeignKey("images.id"))
 
-    @staticmethod
-    def select(order_by: str | None = None, where: dict[str, str] = {}, desc_: bool = False, offset: int = 0, limit: int = 20) -> Select:
-        _where = []
-        for op, ex in __class__.__filter_options__.items():
-            if op in where:
-                _where.append(ex(where[op]))
-
-        _order_by = order_by
-
-        if _order_by not in __class__.__order_by_options__:
-            _order_by = None
-        
-        if desc_:
-            _order_by = desc(_order_by)
-
-        _offset = offset
-
-        _limit = limit
-        if _limit > 200:
-            _limit = 20
- 
+    @classmethod
+    def select_base(cls) -> Select:
         return (
             select(
-                *__class__.__table__.columns, 
+                *cls.__table__.columns, 
                 func.count(Like.user_id).label("likes_count"),
                 User.id.label("author_id"),  
                 User.username.label("author"), 
                 Page.id.label("first_page_id"),
                 Genre.id.label("genre_id"),
-                Genre.name.label("genre")
+                Genre.name.label("genre"),
+                Image.path.label("image_path")
             )
-            .join_from(__class__, Like, __class__.id == Like.book_id, isouter=True)
-            .join(User, __class__.author_id == User.id)
-            .join(Page, and_(__class__.id == Page.book_id, Page.first == True), isouter=True)
-            .join(Genre, __class__.genre_id == Genre.id, isouter=True)
-            .group_by(__class__.id)
-            .where(True, *_where)
-            .order_by(_order_by)
-            .offset(_offset)
-            .limit(_limit)
+            .join_from(cls, Like, cls.id == Like.book_id, isouter=True)
+            .join(User, cls.author_id == User.id)
+            .join(Page, and_(cls.id == Page.book_id, Page.first == True), isouter=True)
+            .join(Genre, cls.genre_id == Genre.id, isouter=True)
+            .join(Image, cls.cover_image_id == Image.id, isouter=True)
+            .group_by(cls.id)
         )
         
 
@@ -144,44 +159,21 @@ class Page(Base):
     created_at: Mapped[datetime] = mapped_column(insert_default=datetime.now)
     likes: WriteOnlyMapped[list["Like"]] = relationship(back_populates='page')
 
-    @staticmethod
-    def select(order_by: str | None = None, where: dict[str, str] = {}, desc_: bool = False, offset: int = 0, limit: int = 20) -> Select:
-        _where = []
-        for op, ex in __class__.__filter_options__.items():
-            if op in where:
-                _where.append(ex(where[op]))
-
-        _order_by = order_by
-
-        if _order_by not in __class__.__order_by_options__:
-            _order_by = None
-        
-        if desc_:
-            _order_by = desc(_order_by)
-
-        _offset = offset
-
-        _limit = limit
-        if _limit > 200:
-            _limit = 20
-
+    @classmethod
+    def select_base(cls) -> Select:
         return (
             select(
-                *__class__.__table__.columns, 
+                *cls.__table__.columns, 
                 func.count(Like.user_id).label("likes_count"), 
                 User.id.label("author_id"),  
                 User.username.label("author"),
                 Book.id.label("book_id"),
                 Book.title.label("book_title")
             )
-            .join_from(__class__, Like, __class__.id == Like.page_id, isouter=True)
-            .join(User, __class__.author_id == User.id)
-            .join(Book, __class__.book_id == Book.id)
-            .group_by(__class__.id)
-            .where(True, *_where)
-            .order_by(_order_by)
-            .offset(_offset)
-            .limit(_limit)
+            .join_from(cls, Like, cls.id == Like.page_id, isouter=True)
+            .join(User, cls.author_id == User.id)
+            .join(Book, cls.book_id == Book.id)
+            .group_by(cls.id)
         )
 
 class Like(Base):
@@ -199,15 +191,6 @@ class Like(Base):
     book: Mapped["Book"] = relationship(back_populates="likes")
     page_id: Mapped[UUID] = mapped_column(ForeignKey("pages.id"), insert_default=UUID(int=0), primary_key=True)
     page: Mapped["Page"] = relationship(back_populates="likes")
-
-    @staticmethod
-    def delete(where: dict[str, str] = {}) -> Delete:
-        _where = []
-        for op, ex in Like.__filter_options__.items():
-            if op in where:
-                _where.append(ex(where[op]))
-
-        return delete(Like).where(True, *_where)
     
 
 class Genre(Base):
@@ -216,3 +199,9 @@ class Genre(Base):
     id: Mapped[UUID] = mapped_column(primary_key=True, insert_default=uuid4)
     name: Mapped[str] = mapped_column(String(50), nullable=False)
     books: Mapped[list["Book"]] = relationship(back_populates="genre")
+
+class Image(Base):
+    __tablename__ = 'images'
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, insert_default=uuid4)
+    path: Mapped[str] = mapped_column(String(200))

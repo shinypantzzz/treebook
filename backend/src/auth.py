@@ -23,7 +23,7 @@ def auth_required(handler: Handler):
         auth_token = request.headers.get('Authorization')
 
         if not auth_token:
-            return Response(status=401, reason="Unauthorized")
+            return Response(status=401, reason="UNAUTHORIZED")
         
         auth_token = auth_token.split()[-1]
         auth_token = UUID(hex=auth_token)
@@ -33,7 +33,7 @@ def auth_required(handler: Handler):
         token = session.query(Token).filter(Token.id == auth_token).first()
 
         if not token or not token.active or (datetime.now() - token.created_at).total_seconds() > 18000:
-            return Response(status=401, reason="Unauthorized")
+            return Response(status=401, reason="BAD_TOKEN")
         
         request['user'] = token.user
 

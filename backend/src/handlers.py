@@ -1,13 +1,16 @@
 from json import dumps
-from uuid import UUID
+from uuid import UUID, uuid4
 from typing import Type
+from os import path, remove
+
+from config import IMAGES_FOLDER, STATIC_PATH
 
 from aiohttp.web_request import Request
 from aiohttp.web_response import Response
 
 from sqlalchemy.orm import Session
 
-from models import User, Token, Book, Like, Base, Page, Genre
+from models import User, Token, Book, Like, Base, Page, Genre, Image
 from validators import validate_password, validate_username, validate_title, validate_page_text, safe_convert_to_uuid
 from auth import hash_password, check_password, auth_required
 
@@ -67,20 +70,50 @@ async def login_user(request: Request) -> Response:
 
 @auth_required
 async def create_book(request: Request) -> Response:
-    user: User = request.get('user')
-    params = await request.post()
 
-    title = params.get('title')
-    
+    user: User = request.get('user')
+
+    reader = await request.multipart()
+
+    title = None
+    first_page_text = None
+    genre_id = None
+    image = None
+
+    while True:
+        field = await reader.next()
+        if not field:
+            break
+        
+        if field.name == 'title':
+            title = (await field.read_chunk()).decode()
+        
+        if field.name == 'text':
+            first_page_text = (await field.read_chunk()).decode()
+        
+        if field.name == 'genre_id':
+            genre_id = (await field.read_chunk()).decode()
+
+        if field.name == 'cover':
+            filename = uuid4().hex + '.' + field.filename.split('.')[-1]
+            with open(path.join(STATIC_PATH, IMAGES_FOLDER, filename), 'wb') as file:
+                for _ in range(1000):
+                    chank = await field.read_chunk()
+                    if not chank:
+                        break
+                    file.write(chank)
+                else:
+                    file.close()
+                    remove(path.join(STATIC_PATH, IMAGES_FOLDER, filename))
+                    return Response(status=413, reason="IMAGE_TOO_BIG")
+            image = Image(path=path.join(IMAGES_FOLDER, filename))
+
+
     if not validate_title(title):
         return Response(status=400, reason="INVALID_TITLE")
     
-    first_page_text = params.get('text')
-
     if not validate_page_text(first_page_text):
         return Response(status=400, reason="INVALID_FIRST_PAGE_TEXT")
-    
-    genre_id = params.get('genre_id', None)
     
     session: Session = request.app.get('session')
 
@@ -91,6 +124,11 @@ async def create_book(request: Request) -> Response:
         author=user,
         genre=genre,
     )
+
+    if image:
+        session.add(image)
+        session.commit()
+        book.cover_image_id = image.id
 
     first_page = Page(
         text=first_page_text,
