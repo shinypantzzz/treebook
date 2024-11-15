@@ -89,6 +89,7 @@ class Book(Base):
     __filter_options__ = {
         "author_id": lambda author_id: Book.author_id == UUID(hex=author_id),
         "id": lambda id: Book.id == UUID(hex=id),
+        "created_before": lambda created_before: Book.created_at < datetime.fromisoformat(created_before)
     }
 
     __order_by_options__ = {
