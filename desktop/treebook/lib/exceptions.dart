@@ -1,0 +1,13 @@
+class UserDoesNotExistException implements Exception { }
+class WrongPasswordException implements Exception { }
+class ServerErrorException implements Exception { }
+class InvalidUsernameException implements Exception { }
+class InvalidPasswordException implements Exception { }
+class UserAlreadyExistsException implements Exception { }
+class AuthorizationRequiredException implements Exception { }
+class InvalidTitleException implements Exception { }
+class InvalidPageTextException implements Exception { }
+class AuthorizationException implements Exception { }
+class ValidationException implements Exception { }
+class PageNotFoundException implements Exception { }
+class LastPageException implements Exception { }
