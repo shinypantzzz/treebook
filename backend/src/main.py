@@ -19,17 +19,20 @@ with Session(engine) as session:
     app['session'] = session
 
     app.add_routes([
-        web.post('/register_user', handlers.register_user),
-        web.post('/login_user', handlers.login_user),
-        web.post('/book', handlers.create_book),
-        web.get('/book', handlers.get_book),
-        web.get('/books', handlers.get_books),
-        web.post('/book/like', handlers.like_book),
+        web.post  ('/register_user', handlers.register_user),
+        web.post  ('/login_user', handlers.login_user),
+        web.post  ('/book', handlers.create_book),
+        web.post  ('/book/from_file/{file_type}', handlers.create_book_from_file),
+        web.get   ('/book', handlers.get_book),
+        web.get   ('/books', handlers.get_books),
+        web.post  ('/book/like', handlers.like_book),
         web.delete('/book/like', handlers.unlike_book),
-        web.post('/page', handlers.create_page),
-        web.get('/page', handlers.get_page),
-        web.post('/page/like', handlers.like_page),
+        web.post  ('/page', handlers.create_page),
+        web.get   ('/page', handlers.get_page),
+        web.get   ('/pages', handlers.get_pages),
+        web.post  ('/page/like', handlers.like_page),
         web.delete('/page/like', handlers.unlike_page),
+        web.get   ('/genres', handlers.get_genres),
         web.static('/static', STATIC_PATH, name='static')
     ])
 

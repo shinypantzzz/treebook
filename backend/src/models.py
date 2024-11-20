@@ -24,7 +24,7 @@ class Base(DeclarativeBase):
         if _order_by not in cls.__order_by_options__:
             _order_by = None
         
-        if desc_:
+        if desc_ and _order_by:
             _order_by = desc(_order_by)
 
         _offset = offset
@@ -146,6 +146,8 @@ class Page(Base):
         'likes_count'
     }
 
+    MAX_LENGTH = 2500
+
     id: Mapped[UUID] = mapped_column(primary_key=True, insert_default=uuid4)
     text: Mapped[str] = mapped_column(String(10000))
     book_id: Mapped[UUID] = mapped_column(ForeignKey("books.id"))
@@ -199,7 +201,7 @@ class Genre(Base):
 
     id: Mapped[UUID] = mapped_column(primary_key=True, insert_default=uuid4)
     name: Mapped[str] = mapped_column(String(50), nullable=False)
-    books: Mapped[list["Book"]] = relationship(back_populates="genre")
+    books: WriteOnlyMapped[list["Book"]] = relationship(back_populates="genre")
 
 class Image(Base):
     __tablename__ = 'images'

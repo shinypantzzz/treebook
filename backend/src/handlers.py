@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from models import User, Token, Book, Like, Base, Page, Genre, Image
 from validators import validate_password, validate_username, validate_title, validate_page_text, safe_convert_to_uuid
 from auth import hash_password, check_password, auth_required
+from parsers import BookParser, FB2BookParser, StringBookParser
 
 async def register_user(request: Request) -> Response:
     params = await request.post()
@@ -167,7 +168,7 @@ async def get_list(request: Request, Model: Type[Base]) -> Response:
 
     for param in params:
         if param.endswith("_f"):
-            where[param[-2]] = params[param]
+            where[param[:-2]] = params[param]
         elif param == 'order_by':
             order_by = params[param]
         elif param == 'desc':
@@ -312,4 +313,88 @@ async def unlike_page(request: Request):
 
     return Response(status=200, reason='SUCCESS')
 
+@auth_required
+async def create_book_from_file(request: Request) -> Response:
+    parsers_map: dict[str, type[BookParser]] = {
+        'txt': StringBookParser,
+        'fb2': FB2BookParser
+    }
 
+    ParserType = parsers_map.get(request.match_info.get('file_type', 'txt'))
+    user = request.get('user')
+
+    reader = await request.multipart()
+
+    book_data = bytearray()
+    encoding = 'utf-8'
+    title = None
+
+    while True:
+        field = await reader.next()
+        if not field:
+            break
+
+        if field.name == 'book':
+
+            while True:
+                chunk = await field.read_chunk()
+                if not chunk:
+                    break
+                book_data.extend(chunk)
+
+        if field.name == 'encoding':
+            encoding = await field.text()
+
+        if field.name == 'title':
+            title = await field.text()
+
+    if not book_data:
+        return Response(status=400, reason="NO_FILE")
+    
+    parser = ParserType.from_bytes(book_data, encoding)
+
+    if not title:
+        title = parser.get_title()
+
+    if not title:
+        return Response(status=400, reason="NO_TITLE")
+
+    pages = [Page(text=page_text, author=user) for page_text in parser.get_text(Page.MAX_LENGTH)]
+    pages[0].first = True
+    pages[-1].last = True
+    for i in range(1, len(pages)):
+        pages[i].previous_page = pages[i - 1]
+
+    book = Book(
+        title=title,
+        author=user,
+        pages=pages
+    )
+
+    image_data = parser.get_cover()
+    image = None
+    if image_data:
+        image_path = path.join(IMAGES_FOLDER, f'{uuid4().hex}.{image_data[1]}')
+        try:
+            with open(path.join(STATIC_PATH, image_path), 'wb') as f:
+                f.write(image_data[0])
+            image = Image(
+                path=image_path
+            )
+        except Exception as e:
+            remove(image_path)
+            image = None
+
+    session: Session = request.app.get("session")
+    if image:
+        session.add(image)
+        session.commit()
+        book.cover_image_id = image.id
+
+    session.add(book)
+    session.commit()
+
+    return Response(status=201, reason="SUCCESS", content_type='application/json', body=dumps({'book_id': str(book.id)}))
+    
+async def get_genres(request: Request) -> Response:
+    return await get_list(request, Genre)

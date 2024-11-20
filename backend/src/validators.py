@@ -1,4 +1,5 @@
 from uuid import UUID
+from models import Page
 
 def validate_password(password: str):
     if not password: return False
@@ -24,7 +25,7 @@ def validate_title(title: str):
 
 def validate_page_text(text: str):
     if not text: return False
-    if len(text) > 10000:
+    if len(text) > Page.MAX_LENGTH:
         return False
     return True
 
